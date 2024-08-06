@@ -210,9 +210,15 @@ if [ ! -z "$print" ]; then
     exit 0
 fi
 
+# Use Docker buildx if available
+BUILD_CMD="docker build"
+if docker buildx version &>/dev/null; then
+    BUILD_CMD="docker buildx build"
+fi
+
 # Squash image to single layer
 echo "Start squashing the image $source"
 echo "  Build options: $@"
-generate "$source" | docker build "$@" -
+generate "$source" | $BUILD_CMD "$@" -
 [ "$cleanup" -eq 1 ] && docker image rm -f "$source"
 echo "Done."
