@@ -109,11 +109,12 @@ generate() {
 
 ################################################################################
 # CLEANING UP THE SOURCE IMAGE. ################################################
+# Enable SBOM attestations
+# See: https://docs.docker.com/build/attestations/sbom/
+ARG BUILDKIT_SBOM_SCAN_CONTEXT=true
+
 FROM $tag AS $alias
-
-# Enable scanning for the intermediate build stage
-ARG BUILDKIT_SBOM_SCAN_STAGE=true
-
+ARG  BUILDKIT_SBOM_SCAN_STAGE=true
 # Pre-squash scripts may be useful to clean the source image before squashing.
 # Use build argument to add your pre-squash scripts, and run them in this stage.
 # Example:
@@ -125,7 +126,6 @@ RUN [ ! -z "\$PRESQUASH_SCRIPTS" ] && sh -c "\$PRESQUASH_SCRIPTS" || true
 ################################################################################
 # BUILDING SQUASHED IMAGE FROM SCRATCH. ########################################
 FROM $base AS squashed-$id
-ARG  BUILDKIT_SBOM_SCAN_CONTEXT=true
 COPY --link --from=$alias / /
 $(if [ -n "$labels" ];      then echo "$labels"; fi)
 $(if [ -n "$shell" ];       then echo "SHELL $shell"; fi)
@@ -210,9 +210,15 @@ if [ ! -z "$print" ]; then
     exit 0
 fi
 
+# Use Docker buildx if available
+BUILD_CMD="docker build"
+if docker buildx version &>/dev/null; then
+    BUILD_CMD="docker buildx build"
+fi
+
 # Squash image to single layer
 echo "Start squashing the image $source"
 echo "  Build options: $@"
-generate "$source" | docker build "$@" -
+generate "$source" | $BUILD_CMD "$@" -
 [ "$cleanup" -eq 1 ] && docker image rm -f "$source"
 echo "Done."
