@@ -13,6 +13,12 @@ if [ ! -x "$(command -v docker)" ]; then
     exit 1
 fi
 
+# Check if jq is installed, if not exit
+if [ ! -x "$(command -v jq)" ]; then
+    echo "jq is not installed. Please install jq and try again." >&2
+    exit 1
+fi
+
 # HELPER FUNCTIONS
 ################################################################################
 
