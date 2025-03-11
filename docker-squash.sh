@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 ################################################################################
 # The setups in this file belong to https://code.shin.company/docker-squash
 # I appreciate you respecting my intellectual efforts in creating them.
