@@ -35,6 +35,12 @@ Usage: ${0##*/} <source_image> [build_options]
                    An absolute path to your Dockerfile can also be used.
     build_options  Optional Docker build options like --build-arg, --label, etc.
 
+  Env Variables:
+    DOCKERFILE_SYNTAX
+                   Defaults to docker/dockerfile:1
+                   Normally there is no reason to change this unless you don't have access to docker.io from your network.
+                   Or want to use a local cache.
+
 Author:  SHIN Company <shin@shin.company>
 License: https://code.shin.company/docker-squash/blob/main/LICENSE
 
@@ -81,6 +87,7 @@ get_healthcheck() { parse_config "$1" '.Healthcheck // empty|(
     (.Test[0]|sub("-SHELL";"")) + " " + .Test[1]
 )'; }
 
+
 generate() {
     local id="$(get_id "$1")"
 
@@ -106,7 +113,7 @@ generate() {
     local healthcheck="$(get_healthcheck "$id")"
 
     awk NF <<Dockerfile
-# syntax=docker/dockerfile:1
+# syntax=${DOCKERFILE_SYNTAX:-docker/dockerfile:1}
 
 ################################################################################
 # Base image: $tag (Image ID: $id)
