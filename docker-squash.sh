@@ -7,6 +7,8 @@
 # License: https://code.shin.company/docker-squash/blob/main/LICENSE
 ################################################################################
 
+trap 'kill 0' SIGINT
+
 # Check if Docker is installed, if not exit
 if [ ! -x "$(command -v docker)" ]; then
     echo "Docker is not installed. Please install Docker and try again." >&2
