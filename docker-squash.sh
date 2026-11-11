@@ -69,7 +69,7 @@ parse_config() {
 
 get_name()        { docker_tag_id "$1" | awk '{printf $1}'; }
 get_id()          { docker_tag_id "$1" | awk '{printf $2}'; }
-get_labels()      { parse_config "$1" '.Labels // empty|to_entries|map("LABEL \(.key)=\"\(.value)\"")|.[]'; }
+get_labels()      { parse_config "$1" '.Labels // empty|to_entries|map("LABEL \(.key)=\"\(.value|gsub("\n";"\\n"))\"")|.[]'; }
 get_shell()       { parse_config "$1" '.Shell // empty|@json'; }
 get_envs()        { parse_config "$1" '.Env // empty|map(gsub("\\\\"; "\\\\\\\\"))|sort|.[]|capture("(?<key>[^=]+)=(?<value>.*)")|"ENV \(.key)=\"\(.value)\""'; }
 get_onbuilds()    { parse_config "$1" '.OnBuild // empty|map("ONBUILD \(.)")|.[]'; }
