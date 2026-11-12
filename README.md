@@ -1,27 +1,39 @@
 # docker-squash
 
-This simple shell script provides an alternative to [Docker's experimental `--squash` option](https://docs.docker.com/engine/reference/commandline/build/#squash) for building optimized Docker images by squashing layers.
+A single shell script that squashes all layers of a Docker image into one layer and keeps the image metadata.
 
-## What is image squashing?
-When Docker builds an image, it utilizes a layered filesystem (AUFS). Each command in the Dockerfile adds a new layer that contains only the changes from the previous layer. This makes builds very fast since only changed files have to be copied.
+It is an alternative to the experimental `docker build --squash` option, which needs an experimental daemon and is not available with BuildKit.
 
-However, the layered filesystem also results in larger image sizes since each layer contains duplicate files. Squashing combines these layers into a single layer, reducing storage space and often improving runtime performance by decreasing mount points.
+## What it does
 
-## Benefits over "docker build --squash"
-The `--squash` option provided by Docker squashes all layers into one, reducing image size. However, it also discards all previous instructions like ENV, LABEL, etc.
+`docker-squash.sh` reads the metadata of the source image, writes a new Dockerfile from it, and builds that Dockerfile:
 
-This script also squashes image layers but keeps ENV, ARG, LABEL and other metadata from the original image.
-- Retains user, workdir, and other runtime configurations
-- Results in smaller image sizes by combining redundant layers
-- Faster lookups at runtime by reducing layer mount points
+1. Copy all files of the source image into an empty stage.
+2. Run the pre-squash scripts to remove files you do not need.
+3. Copy the result into a new image `FROM scratch`, which gives a single layer.
+4. Restore the metadata: `LABEL`, `ENV`, `EXPOSE`, `VOLUME`, `WORKDIR`, `USER`, `SHELL`, `ENTRYPOINT`, `CMD`, `STOPSIGNAL`, `HEALTHCHECK` and `ONBUILD`.
 
-In other words - smaller images but preserving more of the original image definition!
+Files that an upper layer deleted or replaced no longer take space, and the pre-squash scripts remove files for real instead of hiding them in a new layer.
+
+## Results
+
+Measured on 2026-11-12 with Docker 29.9.2. Sizes come from `docker image inspect --format '{{.Size}}'`.
+
+| Source image | Pre-squash scripts | Before | After | Layers |
+|---|---|---|---|---|
+| `nginx:latest` | default | 258MB | 251MB | 7 to 1 |
+| `python:3.14` | default | 1618MB | 1505MB | 7 to 1 |
+| `php:apache` | default | 740MB | 727MB | 14 to 2 |
+| `php:apache` | remove build dependencies (see below) | 740MB | 367MB | 14 to 2 |
+
+Squashing alone saves little on official images, because they are already built with few wasted layers. The large saving comes from removing files in the pre-squash step, such as compilers and `-dev` packages that are only needed at build time.
+
+## Requirements
+
+- Docker with BuildKit
+- [jq](https://jqlang.org/)
 
 ## Download
-
-You can download [the docker-squash.sh script](https://github.com/shinsenter/docker-squash/raw/main/docker-squash.sh) from this GitHub repository and save it to your local file system.
-
-Alternatively, you can run these commands with superuser (root) privileges to download the script to the system directory /usr/local/bin using curl:
 
 ```shell
 sudo curl -sL https://github.com/shinsenter/docker-squash/raw/main/docker-squash.sh -o /usr/local/bin/docker-squash.sh
@@ -29,76 +41,102 @@ sudo chmod +x /usr/local/bin/docker-squash.sh
 ```
 
 ## Usage
+
 ```shell
 docker-squash.sh <source_image> [docker build options]
 ```
 
-Where:
-- `source_image` - The original image ID or `name:tag` to be squashed
-- `docker build options` - Additional build options like `--build-arg`, `--label`, etc.
+- `source_image`: an image ID, a `name:tag`, or the path to a Dockerfile. An image that is not on your machine is pulled first.
+- `docker build options`: any option of `docker build`, such as `-t`, `--build-arg`, `--label` or `--platform`.
 
-### Use-cases:
+| Option | Description |
+|---|---|
+| `--print`, `-p` | Print the generated Dockerfile instead of building it. |
+| `--upgrade`, `-u` | Download the latest version of the script. |
+| `--help`, `-h` | Show the usage. |
 
-Squashing existing images or Dockerfiles is seamless while providing size and performance benefits.
+### Squash an image
 
-#### Squash an existing image to reduce its size:
+```shell
+docker pull nginx:latest
+docker-squash.sh nginx:latest -t nginx:squashed
+docker images nginx
+```
+
+### Remove files before squashing
+
+The build argument `PRESQUASH_SCRIPTS` holds shell commands that run in the source image before squashing. They run as root, with the environment variables of the source image.
+
+The default removes temporary files, docs, package lists, cache files and log files:
+
+```shell
+rm -rf /tmp/* /usr/share/doc/* /var/lib/apt/lists/*; find /var/cache /var/log -type f -delete
+```
+
+Set your own commands to remove more. This example removes the build dependencies of `php:apache` and brings it from 740MB to 367MB:
+
 ```shell
 docker pull php:apache
-docker-squash.sh php:apache -t php:apache-squashed
-docker images | grep -F 'apache'
-# Original image size: 515MB
-# Squashed image size: 505MB
+docker-squash.sh php:apache -t php:apache-squashed \
+    --build-arg PRESQUASH_SCRIPTS='rm -rf /tmp/* /var/lib/apt/lists/*; apt-get -y autoremove --purge $PHPIZE_DEPS *-dev'
 ```
 
-#### Inject pre-squash script which is executed before squashing:
-You can add your shell script to a build argument named `PRESQUASH_SCRIPTS` and execute as root user. It may be useful to clean up the source image before squashing.
+Pass an empty value to skip this step. This is required for images without a shell, such as distroless images:
+
 ```shell
-docker pull php:apache
-docker-squash.sh php:apache \
-    --build-arg PRESQUASH_SCRIPTS='rm -rf /tmp/* /var/lib/apt/lists/*; apt-get -y autoremove --purge $PHPIZE_DEPS *-dev' \
-    -t php:apache-squashed
-docker images | grep -F 'apache'
-# Original image size: 515MB
-# Squashed image size: 275MB
+docker-squash.sh my-distroless-app:latest -t my-distroless-app:squashed --build-arg PRESQUASH_SCRIPTS=
 ```
 
-#### Specify target platform to squash multi-architecture images:
+### Squash an image for another platform
+
 ```shell
-docker pull --platform linux/arm64 ubuntu:jammy
-docker-squash.sh ubuntu:jammy -t ubuntu:jammy-squashed --platform linux/arm64
-docker images | grep -F 'jammy'
-# Original image size: 69.2MB
-# Squashed image size: 67.2MB
+docker pull --platform linux/arm64 ubuntu:latest
+docker-squash.sh ubuntu:latest -t ubuntu:squashed --platform linux/arm64
 ```
 
-#### Squash image built straight from a Dockerfile:
+### Squash straight from a Dockerfile
+
+The script builds the Dockerfile first, then squashes the result. The build options are used for both builds.
+
 ```shell
 docker-squash.sh /home/my-project/Dockerfile -t my-project:squashed
 ```
 
-## Pros and Cons
+### Review the generated Dockerfile
 
-#### Pros:
-- Smaller image size
-- Faster runtime performance
-- Obfuscates build details
-- Retains Dockerfile metadata
+```shell
+docker-squash.sh nginx:latest --print
+```
 
-#### Cons:
-- Slower rebuild time
-- Can inhibit debugging capabilities
-- Loss of Docker cache and remote build benefits
+### Environment variables
+
+| Variable | Description |
+|---|---|
+| `DOCKERFILE_SYNTAX` | The Dockerfile frontend, `docker/dockerfile:1` by default. Change it when you cannot reach docker.io. Set it to an empty value to use the frontend built into BuildKit. |
+| `CLEAR_TEMP_BUILD` | Set it to `0` to keep the temporary image built from a Dockerfile. |
+| `DEBUG` | Set it to any value to trace the script. |
+
+## Limitations
+
+- A Dockerfile cannot hold a line break in a value. Labels with line breaks are kept exactly when the script builds the image. In the output of `--print`, and in `ENV` values, a line break is written as `\n`.
+- `ENV` instructions are written in alphabetical order.
+- An image with an `ONBUILD COPY --from=...` trigger cannot be squashed, because BuildKit resolves the source of the trigger when it reads the image.
+- The squashed image shares no layer with its source image, so pushes and pulls cannot reuse layers that the registry or the host already has.
+- The build history of the source image is not kept.
+
+## Tests
+
+The tests pull no image and start no container. See [tests/test.sh](tests/test.sh).
+
+```shell
+tests/test.sh
+```
 
 ## Support this project
-If you find this tool helpful and wish to support continued development, I welcome donations or other contributions:
 
-### Donate
-I appreciate monetary contributions via [PayPal](https://www.paypal.me/shinsenter) to help fund development costs. Your support is greatly appreciated.
+If you find this tool helpful, you can support its development via [PayPal](https://www.paypal.me/shinsenter).
 
-### Contribute
-This is open source software. If you have suggestions, spot issues, or can contribute code changes, please open GitHub issues or pull requests on this project repository. I welcome community input to help expand capabilities and fix problems!
-
-Together we can build better tools for working with Docker. Thank you!
+Issues and pull requests are welcome. Pull requests must pass the tests before they are merged.
 
 * * *
 
