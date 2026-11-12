@@ -26,8 +26,9 @@
 #   Build Arguments:
 #     PRESQUASH_SCRIPTS
 #                    Shell commands run in the source image before squashing.
-#                    Defaults to removing temporary files, docs, package lists,
-#                    cache files and log files.
+#                    Defaults to ENV PRESQUASH_SCRIPTS of the source image.
+#                    Without it, the default removes temporary files, docs,
+#                    package lists, cache files and log files.
 #                    Pass an empty value to skip this step.
 #
 # Author:  SHIN Company <shin@shin.company>
@@ -134,6 +135,10 @@ generate() {
     local tag="$(get_name "$id")"
     local metadata="$(get_metadata "$id")"
     local envs="$(printf '%s\n' "$metadata" | grep '^ENV ')"
+    # The source image can set its own pre-squash scripts with ENV PRESQUASH_SCRIPTS.
+    # The value is already quoted for a Dockerfile.
+    local presquash="$(printf '%s\n' "$envs" | sed -n 's/^ENV PRESQUASH_SCRIPTS=//p')"
+    [ -n "$presquash" ] || presquash='"rm -rf /tmp/* /usr/share/doc/* /var/lib/apt/lists/*; find /var/cache /var/log -type f -delete"'
 
     awk NF <<Dockerfile
 # syntax=${DOCKERFILE_SYNTAX-docker/dockerfile:1}
@@ -151,7 +156,8 @@ ARG BUILDKIT_SBOM_SCAN_STAGE=true
 
 ################################################################################
 # Pre-squash scripts clean the source image before squashing.
-# The default removes temporary files, docs, package lists, caches and logs,
+# The default is ENV PRESQUASH_SCRIPTS of the source image. Without it,
+# the default removes temporary files, docs, package lists, caches and logs,
 # and keeps the directories of /var/cache and /var/log.
 # Set your own scripts with a build argument. An empty value skips this step,
 # which is required for images without a shell (scratch, distroless).
@@ -159,7 +165,7 @@ ARG BUILDKIT_SBOM_SCAN_STAGE=true
 #   ${0##*/} $tag --build-arg PRESQUASH_SCRIPTS="rm -rf /tmp/*"
 #   ${0##*/} $tag --build-arg PRESQUASH_SCRIPTS="/path/to/script.sh"
 #   ${0##*/} $tag --build-arg PRESQUASH_SCRIPTS=
-ARG PRESQUASH_SCRIPTS="rm -rf /tmp/* /usr/share/doc/* /var/lib/apt/lists/*; find /var/cache /var/log -type f -delete"
+ARG PRESQUASH_SCRIPTS=$presquash
 
 ################################################################################
 # COPYING THE SOURCE IMAGE. ####################################################
