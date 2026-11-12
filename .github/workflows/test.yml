@@ -10,7 +10,8 @@ permissions:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    # Tests run on arm64, the platform the expected outputs were created on.
+    runs-on: ubuntu-24.04-arm
     steps:
       - uses: actions/checkout@v4
 
