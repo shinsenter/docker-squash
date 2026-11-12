@@ -73,6 +73,8 @@ The default removes temporary files, docs, package lists, cache files and log fi
 rm -rf /tmp/* /usr/share/doc/* /var/lib/apt/lists/*; find /var/cache /var/log -type f -delete
 ```
 
+An image can bring its own default: when the source image has `ENV PRESQUASH_SCRIPTS`, that value is used instead. Review it before squashing an image you do not trust, or pass your own value.
+
 Set your own commands to remove more. This example removes the build dependencies of `php:apache` and brings it from 740MB to 367MB:
 
 ```shell

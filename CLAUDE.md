@@ -15,7 +15,8 @@ One POSIX shell script, `docker-squash.sh`, that squashes a Docker image into a 
 
 - The source image is copied with `COPY --link --from=<image> / /`, never used in `FROM`. `FROM` would run the `ONBUILD` triggers of the source image.
 - `PRESQUASH_SCRIPTS` runs as root in a separate stage with the `ENV` values of the source image. An empty value selects the stage without the `RUN`, so images without a shell can be squashed.
-- The default `PRESQUASH_SCRIPTS` deletes files but keeps the directories of `/var/cache` and `/var/log`. Deleting the directories breaks images such as nginx.
+- The default of `PRESQUASH_SCRIPTS` is `ENV PRESQUASH_SCRIPTS` of the source image when it is set, even to an empty value. The build argument replaces it because `ARG` comes after the `ENV` lines in the cleaning stage: keep that order.
+- Without that `ENV`, the default deletes files but keeps the directories of `/var/cache` and `/var/log`. Deleting the directories breaks images such as nginx.
 - A Dockerfile cannot hold a line break in a value. `esc` writes it as `\n`, and the script passes labels with line breaks as `--label` build options to keep their exact value.
 - The script returns a non-zero exit code when the build fails.
 

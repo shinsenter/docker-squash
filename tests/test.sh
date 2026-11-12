@@ -194,6 +194,22 @@ assert_success "pre-squash: squash with scripts that remove files" \
 assert_success "pre-squash: removing files makes the image smaller" \
     [ "$(size "$RESULT:removed")" -lt "$(size "$RESULT:default")" ]
 
+# An image can set its own pre-squash scripts with ENV PRESQUASH_SCRIPTS.
+# They run by default, and the build argument replaces them.
+source="$(source_image tests/fixtures/20261112-nginx-presquash-env.dockerfile)"
+assert_success "pre-squash from ENV: squash without scripts" \
+    sh "$SQUASH" "$source" -t "$RESULT:env-skipped" --build-arg PRESQUASH_SCRIPTS=
+assert_success "pre-squash from ENV: squash with the scripts of the image" \
+    sh "$SQUASH" "$source" -t "$RESULT:env-default"
+assert_success "pre-squash from ENV: squash with the build argument" \
+    sh "$SQUASH" "$source" -t "$RESULT:env-replaced" --build-arg PRESQUASH_SCRIPTS='rm -rf /usr/*'
+assert_success "pre-squash from ENV: the scripts of the image run by default" \
+    [ "$(size "$RESULT:env-default")" -lt "$(size "$RESULT:env-skipped")" ]
+assert_success "pre-squash from ENV: the build argument replaces the scripts of the image" \
+    [ "$(size "$RESULT:env-replaced")" -lt "$(size "$RESULT:env-default")" ]
+assert_equal "pre-squash from ENV: metadata is kept" \
+    "$(metadata "$source")" "$(metadata "$RESULT:env-default")"
+
 remove_images
 
 # RESULT
