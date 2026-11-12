@@ -23,13 +23,15 @@ One POSIX shell script, `docker-squash.sh`, that squashes a Docker image into a 
 
 Run `tests/test.sh`. It prints one line per assertion and the totals, and writes the output of every command to `tests/logs/test.log`.
 
-- Tests pull no image and start no container. Fixtures start `FROM scratch`, and assertions only read metadata with `docker image inspect`.
+- Tests start no container. Assertions only read metadata with `docker image inspect`.
+- A fixture starts `FROM scratch`, or from a real registry image pinned by digest (`image:tag@sha256:...`) so the expected output does not change. Prefer small images. To move a pin, change the digest, run `tests/test.sh --update` and review the diff.
 - A fixture is a pair of files in `tests/fixtures/`: `<YYYYMMDD>-<name>.dockerfile` and `<YYYYMMDD>-<name>.out.txt`. The date is the day the fixture was created and the name is kebab-case.
 - A fixture passes only when `docker-squash.sh <fixture>.dockerfile --print` prints exactly the instructions of the `.out.txt` file. Comment lines are ignored, so `.out.txt` files hold instructions only. The image name and image ID are replaced by `<image>` and `<id>`.
 - Each fixture is also squashed for real, and the metadata of the squashed image must equal the metadata of the source image.
 - Every bug fix and every new instruction needs a fixture, or a new case in an existing fixture, with a one-line comment that says what it covers.
 - After changing the output of the script, run `tests/test.sh --update` and review the diff of the `.out.txt` files before committing.
-- Not covered: running `PRESQUASH_SCRIPTS`, because a scratch image has no shell. Check it by hand with a real image when you change that part.
+- Fixtures are squashed with an empty `PRESQUASH_SCRIPTS`, because scratch and distroless images have no shell. The pre-squash step is tested separately with the nginx fixture.
+- Run `docker buildx build --check` only on small outputs. With the output of the `full` fixture it crashed the Docker daemon twice (BuildKit 0.34.0, Docker 29.9.2, panic in `DockerfileLint`). The exact instruction that triggers the panic is not identified.
 
 ## CI
 

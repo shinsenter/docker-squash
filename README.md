@@ -126,7 +126,7 @@ docker-squash.sh nginx:latest --print
 
 ## Tests
 
-The tests pull no image and start no container. See [tests/test.sh](tests/test.sh).
+The tests compare the output of `--print` with the expected files in `tests/fixtures/`, then squash each fixture and compare the image metadata. They start no container. See [tests/test.sh](tests/test.sh).
 
 ```shell
 tests/test.sh
