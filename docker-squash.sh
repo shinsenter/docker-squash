@@ -6,6 +6,33 @@
 # Author:  SHIN Company <shin@shin.company>
 # License: https://code.shin.company/docker-squash/blob/main/LICENSE
 ################################################################################
+# Combines Docker image layers into a single layer, reducing storage space
+# and improving runtime performance by decreasing mount points.
+#
+# Usage: docker-squash.sh <source_image> [build_options]
+#
+#   Arguments:
+#     source_image   The original image ID or name:tag to be squashed.
+#                    An absolute path to your Dockerfile can also be used.
+#     build_options  Optional Docker build options like --build-arg, --label, etc.
+#
+#   Env Variables:
+#     DOCKERFILE_SYNTAX
+#                    Defaults to docker/dockerfile:1
+#                    Normally there is no reason to change this unless you don't have access to docker.io from your network.
+#                    Or want to use a local cache.
+#                    Set it to an empty value to use the frontend built into BuildKit.
+#
+#   Build Arguments:
+#     PRESQUASH_SCRIPTS
+#                    Shell commands run in the source image before squashing.
+#                    Defaults to removing temporary files, docs, package lists,
+#                    cache files and log files.
+#                    Pass an empty value to skip this step.
+#
+# Author:  SHIN Company <shin@shin.company>
+# License: https://code.shin.company/docker-squash/blob/main/LICENSE
+################################################################################
 
 trap 'kill 0' SIGINT
 
@@ -24,29 +51,11 @@ fi
 # HELPER FUNCTIONS
 ################################################################################
 
+# Prints the usage text from the comment block at the top of this file.
 usage() {
-    cat <<EOF
-
-Combines Docker image layers into a single layer, reducing storage space
-and improving runtime performance by decreasing mount points.
-
-Usage: ${0##*/} <source_image> [build_options]
-
-  Arguments:
-    source_image   The original image ID or name:tag to be squashed.
-                   An absolute path to your Dockerfile can also be used.
-    build_options  Optional Docker build options like --build-arg, --label, etc.
-
-  Env Variables:
-    DOCKERFILE_SYNTAX
-                   Defaults to docker/dockerfile:1
-                   Normally there is no reason to change this unless you don't have access to docker.io from your network.
-                   Or want to use a local cache.
-
-Author:  SHIN Company <shin@shin.company>
-License: https://code.shin.company/docker-squash/blob/main/LICENSE
-
-EOF
+    echo
+    awk 'NR > 8 && /^###/ { exit } NR > 8 { print substr($0, 3) }' "$0"
+    echo
 }
 
 upgrade() {
