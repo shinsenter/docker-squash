@@ -1,0 +1,27 @@
+ARG BUILDKIT_SBOM_SCAN_CONTEXT=true
+ARG BUILDKIT_SBOM_SCAN_STAGE=true
+ARG PRESQUASH_SCRIPTS="rm -rf /tmp/* /usr/share/doc/* /var/lib/apt/lists/*; find /var/cache /var/log -type f -delete"
+FROM scratch AS temp-<id>
+COPY --link --from=<image> / /
+FROM temp-<id> AS temp-<id>-cleaned
+ENV DYNPKG_RELEASE="1"
+ENV NGINX_VERSION="1.31.8"
+ENV PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+ENV PKG_RELEASE="1"
+ARG PRESQUASH_SCRIPTS
+RUN sh -c "$PRESQUASH_SCRIPTS" || true
+FROM temp-<id>${PRESQUASH_SCRIPTS:+-cleaned} AS temp-<id>-final
+FROM scratch AS squashed-<id>
+COPY --link --from=temp-<id>-final / /
+LABEL "maintainer"="NGINX Docker Maintainers <docker-maint@nginx.com>"
+ENV DYNPKG_RELEASE="1"
+ENV NGINX_VERSION="1.31.8"
+ENV PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+ENV PKG_RELEASE="1"
+ONBUILD RUN apk upgrade --no-cache
+EXPOSE 80/tcp
+WORKDIR /
+ENTRYPOINT ["/docker-entrypoint.sh"]
+CMD ["nginx","-g","daemon off;"]
+STOPSIGNAL SIGQUIT
+HEALTHCHECK --interval=300s --timeout=3s CMD wget -q -O /dev/null http://localhost/ || exit 1

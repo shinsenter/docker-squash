@@ -19,8 +19,9 @@
 # Each printed Dockerfile is also built, to check that the squashed image
 # keeps the metadata of its source image.
 #
-# The tests pull no image and start no container. The test images are built
-# FROM scratch and only their metadata is read with "docker image inspect".
+# The tests start no container: only the metadata of the images is read with
+# "docker image inspect". Fixtures start FROM scratch, or from a registry image
+# pinned by digest so that the expected output does not change.
 #
 # Usage: tests/test.sh [--update]
 #
@@ -50,7 +51,7 @@ FIELDS='{
     Labels, OnBuild, ExposedPorts, Volumes, User, StopSignal, Shell,
     Entrypoint, Cmd, Healthcheck,
     Env: (.Env // [] | sort),
-    WorkingDir: (if .WorkingDir == "" then "/" else .WorkingDir end)
+    WorkingDir: (.WorkingDir // "" | if . == "" then "/" else . end)
 }'
 
 # ASSERTIONS
@@ -104,6 +105,16 @@ metadata() {
     docker image inspect --format '{{json .Config}}' "$1" 2>>"$LOG" | jq -S "$FIELDS"
 }
 
+size() {
+    docker image inspect --format '{{.Size}}' "$1" 2>>"$LOG"
+}
+
+# source_image <dockerfile>: builds the fixture and prints the image name.
+source_image() {
+    sh "$SQUASH" "$1" --print --build-arg "LF=$LF" 2>>"$LOG" |
+        sed -n 's/^# Base image: \(.*\) (Image ID.*/\1/p'
+}
+
 # Keeps the instructions only and replaces the values that change on every run.
 instructions() {
     grep -v '^#' | sed -E \
@@ -148,8 +159,8 @@ for dockerfile in tests/fixtures/*.dockerfile; do
         assert_equal "$name: printed instructions match ${expected##*/} ($shell)" \
             "$(instructions <"$expected" 2>>"$LOG")" "$printed"
 
-        # Build the printed Dockerfile. Scratch images have no shell,
-        # so the pre-squash scripts are skipped.
+        # Build the printed Dockerfile. The pre-squash scripts are skipped,
+        # because scratch and distroless images have no shell.
         assert_success "$name: squash ($shell)" \
             "$shell" "$SQUASH" "$source" -t "$RESULT:$name" --build-arg PRESQUASH_SCRIPTS=
         assert_equal "$name: metadata is kept ($shell)" \
@@ -159,6 +170,9 @@ for dockerfile in tests/fixtures/*.dockerfile; do
 done
 
 # The generated Dockerfile must pass the build checks of the Dockerfile frontend.
+# Only this small fixture is checked: "docker buildx build --check" crashed the
+# Docker daemon (BuildKit 0.34.0) with the output of the "full" fixture.
+source="$(source_image tests/fixtures/20261112-shell-form.dockerfile)"
 sh "$SQUASH" "$source" --print >"${LOG%/*}/check.dockerfile" 2>>"$LOG"
 assert_success "generated Dockerfile passes build checks" \
     docker buildx build --check - <"${LOG%/*}/check.dockerfile"
@@ -167,6 +181,18 @@ assert_success "generated Dockerfile passes build checks" \
 # a shell, which a scratch image does not have.
 assert_failure "failed build returns a non-zero exit code" \
     sh "$SQUASH" "$source" -t "$RESULT:failure"
+
+# The pre-squash scripts must run in an image with a shell: the default scripts
+# keep the metadata, and scripts that remove files make the image smaller.
+source="$(source_image tests/fixtures/20261112-nginx-healthcheck-onbuild.dockerfile)"
+assert_success "pre-squash: squash with the default scripts" \
+    sh "$SQUASH" "$source" -t "$RESULT:default"
+assert_equal "pre-squash: metadata is kept with the default scripts" \
+    "$(metadata "$source")" "$(metadata "$RESULT:default")"
+assert_success "pre-squash: squash with scripts that remove files" \
+    sh "$SQUASH" "$source" -t "$RESULT:removed" --build-arg PRESQUASH_SCRIPTS='rm -rf /usr/lib/* /usr/share/*'
+assert_success "pre-squash: removing files makes the image smaller" \
+    [ "$(size "$RESULT:removed")" -lt "$(size "$RESULT:default")" ]
 
 remove_images
 
