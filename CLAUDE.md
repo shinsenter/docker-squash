@@ -35,7 +35,7 @@ Run `tests/test.sh`. It prints one line per assertion and the totals, and writes
 
 ## CI
 
-`.github/workflows/test.yml` runs `tests/test.sh` on every pull request and on pushes to `main`. A pull request is merged only when the `test` job passes.
+`.github/workflows/test.yml` runs `tests/test.sh` on an arm64 runner on every pull request and on pushes to `main`. Tests use arm64: create and update the expected outputs on arm64, because the metadata of a registry image can differ between platforms. A pull request is merged only when the `test` job passes.
 
 ## README
 
