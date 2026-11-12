@@ -1,9 +1,16 @@
 name: Tests
 
+# Tests run only when the script or the tests change.
 on:
   pull_request:
+    paths:
+      - docker-squash.sh
+      - tests/**
   push:
     branches: [main]
+    paths:
+      - docker-squash.sh
+      - tests/**
 
 permissions:
   contents: read
