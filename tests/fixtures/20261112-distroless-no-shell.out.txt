@@ -1,0 +1,18 @@
+ARG BUILDKIT_SBOM_SCAN_CONTEXT=true
+ARG BUILDKIT_SBOM_SCAN_STAGE=true
+ARG PRESQUASH_SCRIPTS="rm -rf /tmp/* /usr/share/doc/* /var/lib/apt/lists/*; find /var/cache /var/log -type f -delete"
+FROM scratch AS temp-<id>
+COPY --link --from=<image> / /
+FROM temp-<id> AS temp-<id>-cleaned
+ENV PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+ENV SSL_CERT_FILE="/etc/ssl/certs/ca-certificates.crt"
+ARG PRESQUASH_SCRIPTS
+RUN sh -c "$PRESQUASH_SCRIPTS" || true
+FROM temp-<id>${PRESQUASH_SCRIPTS:+-cleaned} AS temp-<id>-final
+FROM scratch AS squashed-<id>
+COPY --link --from=temp-<id>-final / /
+ENV PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+ENV SSL_CERT_FILE="/etc/ssl/certs/ca-certificates.crt"
+WORKDIR /home/nonroot
+USER 65532
+ENTRYPOINT ["/app","--config","/etc/app/config.yaml"]

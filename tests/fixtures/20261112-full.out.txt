@@ -1,0 +1,35 @@
+ARG BUILDKIT_SBOM_SCAN_CONTEXT=true
+ARG BUILDKIT_SBOM_SCAN_STAGE=true
+ARG PRESQUASH_SCRIPTS="rm -rf /tmp/* /usr/share/doc/* /var/lib/apt/lists/*; find /var/cache /var/log -type f -delete"
+FROM scratch AS temp-<id>
+COPY --link --from=<image> / /
+FROM temp-<id> AS temp-<id>-cleaned
+ENV PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+ENV TEST_BACKSLASH="C:\\dir\\file"
+ENV TEST_SPECIAL="say \"hi\" for \$5, a=b"
+ARG PRESQUASH_SCRIPTS
+RUN sh -c "$PRESQUASH_SCRIPTS" || true
+FROM temp-<id>${PRESQUASH_SCRIPTS:+-cleaned} AS temp-<id>-final
+FROM scratch AS squashed-<id>
+COPY --link --from=temp-<id>-final / /
+LABEL "test.backslash"="C:\\dir\\file \\n"
+LABEL "test.dollar"="costs \$HOME"
+LABEL "test.key with space"="it's ok"
+LABEL "test.multiline"="line 1\n\nline 3\n"
+LABEL "test.quote"="say \"hi\""
+SHELL ["/bin/bash","-o","pipefail","-c"]
+ENV PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+ENV TEST_BACKSLASH="C:\\dir\\file"
+ENV TEST_SPECIAL="say \"hi\" for \$5, a=b"
+ONBUILD RUN echo "on build" && exit 1
+ONBUILD COPY src /dst
+EXPOSE 80/tcp
+EXPOSE 8080/udp
+WORKDIR /app
+USER 1000:1000
+VOLUME ["/data dir"]
+VOLUME ["/var/log"]
+ENTRYPOINT ["/entry point","--flag=\"x\""]
+CMD ["arg 1","$HOME","back\\slash"]
+STOPSIGNAL SIGQUIT
+HEALTHCHECK --interval=300s --timeout=3s --start-period=10s --start-interval=2s --retries=5 CMD curl --fail http://localhost/ || exit 1
